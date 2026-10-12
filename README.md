@@ -1,10 +1,13 @@
 # Daily Red
 
-A daily Pokémon battle in the browser, like Wordle: once a day you press
-**Play**, get the day's six random level 100 Pokémon from Generations 1–3
-(everyone gets the same team that day), and climb to RED at the top of the
-mountain. You get one battle per day. Your wins, losses, win streak and daily
-play streak are kept in your browser.
+A daily Pokémon battle in the browser, like Wordle: you press **Play**, get
+six random level 100 Pokémon from Generations 1–3 (everyone gets the same
+team for the same game of the day), and climb to the boss at the top of the
+mountain. The boss changes every game, drawn from RED, BLUE, LANCE, STEVEN,
+WALLACE, LORELEI, BRUNO and AGATHA. Game 1 of each day is the day's challenge;
+you can keep playing, and games 2, 3... each have their own team and boss,
+again the same for everyone. Every game counts. Your wins, losses, win streak
+and daily play streak are kept in your browser.
 
 Every battle runs on the original Pokémon FireRed engine: the game is the
 [pret/pokefirered](https://github.com/pret/pokefirered) decompilation with a
@@ -12,24 +15,25 @@ small set of source changes, built into a GBA ROM and played in the browser
 through the mGBA emulator compiled to WebAssembly. Nothing about battles is
 reimplemented in JavaScript.
 
-- [Quick start (macOS)](#quick-start-macos)
+- [Quick start (macOS and Linux)](#quick-start-macos-and-linux)
 - [How it works](#how-it-works)
 - [Team generation](#team-generation)
-- [RED's team](#reds-team)
+- [The bosses](#the-bosses)
 - [Development workflow](#development-workflow)
 - [Testing and debugging](#testing-and-debugging)
 - [Running it locally](#running-it-locally)
 - [Copyright and licenses](#copyright-and-licenses)
 - [Known limitations](#known-limitations)
 
-## Quick start (macOS)
+## Quick start (macOS and Linux)
 
-You need the Xcode Command Line Tools (`xcode-select --install`), Node.js 18+
-and git. No Homebrew, no `sudo`, and **no ROM**: the decompilation builds the
-whole game from source.
+You need Node.js 18+ and git, plus the Xcode Command Line Tools
+(`xcode-select --install`) on macOS or a C/C++ compiler, `make` and `curl` on
+Linux (WSL included). No Homebrew, no `sudo`, and **no ROM**: the decompilation
+builds the whole game from source.
 
 ```sh
-scripts/setup-macos.sh      # ARM cross-compiler + libpng into .toolchain/ (~1 GB, one time)
+scripts/setup-macos.sh      # (or scripts/setup-linux.sh) ARM cross-compiler + libpng into .toolchain/ (~1 GB, one time)
 scripts/get-pokefirered.sh  # pret/pokefirered at a pinned commit + patches/
 scripts/fetch-vendor.sh     # emulator, emulator core and font into web/vendor/
 scripts/build-rom.sh        # builds the ROM, writes web/game/dailyred.gba.gz
@@ -37,6 +41,8 @@ node scripts/serve.mjs      # open http://localhost:8080
 ```
 
 `setup-macos.sh` picks the right compiler for Intel or Apple Silicon Macs.
+`setup-linux.sh` does the same for x86_64 or aarch64 Linux, and also builds
+zlib next to libpng so no `-dev` packages are needed.
 
 ## How it works
 
@@ -80,14 +86,17 @@ file server works without special headers. Everything loads from `web/vendor/`.
   / battle / result / finished) and a result (won / lost). `web/game-link.js`
   finds it in the emulator's WebAssembly memory (the magic followed by the
   seed it injected) and reads it twice a second.
-- **One battle a day:** the day counts as played as soon as RED's battle
-  starts; closing or reloading the page mid-battle counts as a loss. The
+- **Any number of games a day:** each game is one battle. It counts as played
+  as soon as the boss's battle starts; closing or reloading the page
+  mid-battle counts as a loss (so a reload can't be used to re-roll). The
   result is saved the moment it's known. After the closing messages the game
-  fades to black and holds; the site then closes it and shows today's result
-  and a countdown to the next battle. Before the battle you can reload freely:
-  it's the same team all day.
+  fades to black and holds; the site then closes it and shows the result of
+  that game and who is next. Game `n` of a day uses the seed of the date
+  plus `#n` (`gameSeed` in `web/daily.js`; game 1 uses the plain date), so the
+  boss and team of the next game are fixed in advance. Before the battle you
+  can reload freely: it's the same team.
 - **Stats** (`web/daily.js`, localStorage key `dailyred-stats`): wins, losses,
-  win streak (daily wins in a row) and day streak (days played in a row).
+  win streak (games won in a row) and day streak (days played in a row).
   Missing a day resets both streaks.
 - **Without the website** (seed 0, e.g. the ROM in a desktop emulator): the
   normal intro and title screen appear, pressing Start seeds the game the way
@@ -109,7 +118,7 @@ file server works without special headers. Everything loads from `web/vendor/`.
 | Talking to RED → battle → "You defeated RED!" / "Your team was wiped out…" → record → "Play again tomorrow!" / "Try again tomorrow." → fade out | `data/maps/DailyRed_Summit/scripts.inc` and `text.inc`; the `DailyRed_On*` specials in `src/dailyred.c` |
 | Mountain battle background on the summit | `BattleSetup_GetTerrainId` in `src/battle_setup.c` |
 | No free switch when RED's Pokémon faints: Battle Style starts on SET and is locked in Options | `StartNewGame` in `src/dailyred.c`, `src/option_menu.c` |
-| RED as a trainer | `TRAINER_DAILYRED_RED` in `include/constants/opponents.h`, `src/data/trainers.h`, `src/dailyred_boss.c` |
+| The bosses as trainers | `TRAINER_DAILYRED_*` in `include/constants/opponents.h`, `src/data/trainers.h`, `src/dailyred_boss.c` |
 | Menus: POKéMON / OPTION / EXIT; party: SUMMARY / SWITCH / CANCEL | `src/start_menu.c`, `src/party_menu.c`; window height for short menus in `src/new_menu_helpers.c` |
 | RED's overworld sprite, in its own palette slot so it doesn't clash with LEAF's | `OBJ_EVENT_GFX_DAILYRED_RED` in `include/constants/event_objects.h`, `src/data/object_events/` |
 
@@ -138,7 +147,7 @@ not the byte-matching `agbcc` build, so it doesn't reproduce the retail ROM.
 `CreateMon`, `CalculateMonStats`):
 
 - **Species:** 6 different Pokémon from all 386 of Generations 1–3 whose
-  **base stat totals add up to at least 2700** (`MIN_TEAM_BASE_STAT_TOTAL`).
+  **base stat totals add up to at least 2750** (`MIN_TEAM_BASE_STAT_TOTAL`).
   **Legendaries are a 1-in-8 roll** (`LEGENDARY_TEAM_ODDS`): 1 team in 8 gets
   exactly one legendary or mythical Pokémon, in a random party slot, and the
   other 7 get none. The generator then redraws the rest of the team until it
@@ -163,11 +172,11 @@ not the byte-matching `agbcc` build, so it doesn't reproduce the retail ROM.
   |---|---|---|---|
   | 2600 | 94% | 91% | about 1 in 45 |
   | 2650 | 95% | 92% | about 1 in 34 |
-  | **2700** | **96%** | **93%** | **about 1 in 25** |
-  | 2750 | 97% | 94% | about 1 in 17 |
+  | 2700 | 96% | 93% | about 1 in 25 |
+  | **2750** | **97%** | **94%** | **about 1 in 17** |
 
   (Odds from simulating 80,000 teams.) Measured in the real ROM at 2700 over
-  80 runs: typical team 95% of RED's stats, range 93–101%, 1 team stronger
+  80 runs (before the bosses' IVs were lowered to 26, which makes them a little weaker than these figures): typical team 95% of RED's stats, range 93–101%, 1 team stronger
   than RED. RED also has hand-picked moves, chosen held items (his Pikachu's
   Light Ball doubles its Sp. Atk) and the strongest trainer AI, so he stays
   the favourite.
@@ -179,7 +188,7 @@ not the byte-matching `agbcc` build, so it doesn't reproduce the retail ROM.
   (Ditto, Unown, Magikarp, Smeargle…) get all of them.
 - **Stats:** level 100, random personality (so random nature, gender, ability
   and the usual 1/8192 shiny chance), and trained close to RED's level:
-  - **IVs** random from 25 to 31 in every stat (`MIN_TEAM_IV`); RED's are all 31.
+  - **IVs** random from 25 to 31 in every stat (`MIN_TEAM_IV`); the bosses' are 26 (`BOSS_IV` in `src/dailyred_boss.c`).
   - **EVs** 252 into each of its two highest base stats and the last 6 into
     HP, or into its third-best stat if HP is one of the two
     (`AssignFocusedEVs`). Attack and Sp. Atk only count if one of its attacks
@@ -208,39 +217,58 @@ moves, and species-specific items (Light Ball, Thick Club…) aren't in the pool
 The generator uses its own RNG state, separate from the game's `Random()`, so
 teams depend only on the seed.
 
-## RED's team
+## The bosses
+
+Each run's boss comes from the seed, so everyone gets the same boss on the same
+day. The choice is `BossIndexForRun` in `pokefirered/src/dailyred.c` (murmur3's
+32-bit finalizer on the seed, modulo the number of bosses); the website
+repeats the same few lines in `web/bosses.js` to show today's boss on the title
+card without reading the ROM. A practice run that starts over (no daily limit)
+takes the next boss in that sequence.
+
+| # | Boss | Team (base stat total) |
+|---|---|---|
+| 0 | RED | Pikachu, Espeon, Snorlax, Venusaur, Charizard, Blastoise (2954) |
+| 1 | BLUE | Pidgeot, Alakazam, Rhydon, Gyarados, Exeggutor, Arcanine (3059) |
+| 2 | LANCE | Gyarados, Charizard, Aerodactyl, Dragonair, Altaria, Dragonite (3099) |
+| 3 | STEVEN | Skarmory, Claydol, Aggron, Cradily, Armaldo, Metagross (3085) |
+| 4 | WALLACE | Milotic, Walrein, Ludicolo, Whiscash, Seaking, Starmie (2988) |
+| 5 | LORELEI | Dewgong, Cloyster, Slowbro, Jynx, Lapras, Glalie (2960) |
+| 6 | BRUNO | Steelix, Hitmonlee, Hitmonchan, Hariyama, Machamp, Blaziken (2929) |
+| 7 | AGATHA | Gengar, Crobat, Muk, Banette, Arbok, Gengar (2928) |
 
 Edit **`pokefirered/src/dailyred_boss.c`**: species, level, IVs, held item and
 moves use FireRed's normal `TrainerMonItemCustomMoves` format, plus an EV
-table next to it. It's Red's Mt. Silver team from HeartGold/SoulSilver
-(Pikachu, Espeon, Snorlax, Venusaur, Charizard, Blastoise) at level 100 with
-perfect IVs, held items and full EV spreads. HGSS used several Gen 4 moves, so
-the movesets are adapted to Gen 3 ones.
+table per boss. All teams are level 100 with IVs of 26, held items and full
+EV spreads. RED's is his Mt. Silver team from HeartGold/SoulSilver; the others
+are inspired by the same champions and Elite Four across the Kanto and Hoenn
+games. Movesets are adapted to Gen 3 moves, and only Gen 1–3 species are used.
+Base stat totals stay close to RED's 2954 (`tests/bosses.mjs` enforces
+2850–3200) so a day's difficulty mostly depends on your team. The stronger
+bosses (LANCE, STEVEN, BLUE) are about 4-5% above RED, so expect those days to be
+a bit harder than the original. With your team's IVs (25–31) and focused EVs,
+both sides get about the same out of their base stats; natures for the bosses
+come from FireRed's fixed name-based formula and aren't configurable.
 
-| Pokémon | HP | Atk | Def | Spe | SpA | SpD | Total |
-|---|---|---|---|---|---|---|---|
-| Pikachu (Light Ball doubles its Sp. Atk) | 35 | 55 | 30 | 90 | 50 | 40 | 300 |
-| Espeon | 65 | 65 | 60 | 110 | 130 | 95 | 525 |
-| Snorlax | 160 | 110 | 65 | 30 | 65 | 110 | 540 |
-| Venusaur | 80 | 82 | 83 | 80 | 100 | 100 | 525 |
-| Charizard | 78 | 84 | 78 | 100 | 109 | 85 | 534 |
-| Blastoise | 79 | 83 | 100 | 78 | 85 | 105 | 530 |
-| **Team** | | | | | | | **2954** |
+The bosses use the trainer AI without `AI_SCRIPT_TRY_TO_FAINT` (the original RED had it), which makes them a bit less eager to go for a KO. Each boss has a trainer entry (`[TRAINER_DAILYRED_*]` in
+`pokefirered/src/data/trainers.h`, ids in `include/constants/opponents.h`)
+with his name, trainer class, battle sprite and AI flags; the class decides the
+battle music and transition, as for the original trainers. The summit map
+script always names `TRAINER_DAILYRED_RED`, and `StartTrainerBattle`
+(`src/battle_setup.c`) swaps in the run's boss. FireRed trainers have no EVs,
+so a hook in `CreateNPCTrainerParty` (`src/battle_main.c`) applies the boss's
+EV table. The boss's overworld sprite on the summit is set per run through
+`VAR_OBJ_GFX_ID_0`; STEVEN and WALLACE have no overworld sprite in FireRed, so
+they borrow a similar-looking one.
 
-These are Gen 3 base stats from `src/data/pokemon/species_info.h`. With your
-team's IVs (25–31) and focused EVs, both sides get about the same out of their
-base stats. Measured from game RAM, a 525-total Pokémon reaches about 1520
-actual stat points for RED and about 1533 for you; his natures come from
-FireRed's fixed formula and sometimes cut a stat he needs. (With fully random
-IVs and EVs it was about 1445 for you, which made him much stronger point for
-point.)
-
-RED's name, trainer class ("PKMN TRAINER"), sprite and AI flags (the same as
-FireRed's Champion) are in `[TRAINER_DAILYRED_RED]` in
-`pokefirered/src/data/trainers.h`. He gets the Champion battle music
-(`src/pokemon.c`). FireRed trainers have no EVs, so a 3-line hook in
-`CreateNPCTrainerParty` (`src/battle_main.c`) applies the EV table. Natures
-come from FireRed's usual name-based formula and aren't configurable.
+**Adding a boss:** add a trainer id (and bump `NUM_TRAINERS`) in
+`include/constants/opponents.h`, an entry in `src/data/trainers.h`, a party
+and EV table plus a row in `sBosses` in `src/dailyred_boss.c`, an `extern` in
+`include/dailyred.h` (raise `DAILYRED_NUM_BOSSES`), the same boss at the same
+position in `BOSSES` in `web/bosses.js`, and his battle sprite in
+`scripts/build-rom.sh`. Adding or reordering bosses changes which boss each
+seed gets. `cd tests && npm run bosses` checks the data, the order and that the
+ROM and website agree.
 
 ## Development workflow
 
@@ -277,7 +305,7 @@ npm run teams -- --random 40      # 40 random seeds
 
 `npm run smoke` checks that:
 - each seed's team is valid: 6 different real Gen 1–3 species with a combined
-  base stat total of at least 2700 and at most one legendary, level 100, full
+  base stat total of at least 2750 and at most one legendary, level 100, full
   HP, IVs 25–31, EVs exactly as `AssignFocusedEVs` would place them (checked
   by an independent JavaScript copy of the rule), an item from the pool (type boosters only with a
   matching attack), and every move learnable by the species. The
@@ -302,12 +330,13 @@ The win and loss are forced by editing HP values in a save state, which makes
 them quick and deterministic. Screenshots of every step are saved in
 `tests/output/`.
 
-`npm run site` plays the daily game over five faked days (Playwright's clock):
-a fresh visitor, a win (stats, locked until tomorrow, countdown, survives a
-reload), the same team in a second browser that day, a loss the next day,
+`npm run site` plays the game over five faked days (Playwright's clock):
+a fresh visitor, a win (stats, "Play again", survives a reload), the same
+team in a second browser that day, a second game the same day (new team and
+boss, counted), a loss the next day,
 leaving mid-battle (counts as a loss), a missed day (streaks reset), and a
 practice run (`?seed=`, not recorded). It also checks the 3× (720×480)
-screen, RED's sprite, the phone layout and touch d-pad, and the download-error
+screen, the boss's sprite, the phone layout and touch d-pad, and the download-error
 screen with "Try again".
 
 **Checking by hand:** open `http://localhost:8080/?seed=42` for a practice run
@@ -364,8 +393,8 @@ footer links to it.
 - **Audio** can't be checked by the headless tests. Browsers start audio
   suspended unless it begins during a click, so the game resumes it on the
   next key press or tap.
-- **Tested environment:** macOS with Google Chrome (headless, desktop and
-  phone emulation). Not yet tried on Safari, Firefox or real phones.
+- **Tested environment:** macOS and Linux (WSL) with Google Chrome/Chromium
+  (headless, desktop and phone emulation). Not yet tried on Safari, Firefox or real phones.
 - The L/R buttons still open FireRed's built-in help, which describes the
   normal game.
 
@@ -374,6 +403,7 @@ footer links to it.
 ```
 patches/pokefirered-dailyred.patch   all changes to pret/pokefirered
 scripts/setup-macos.sh               toolchain (xPack arm-none-eabi-gcc 14.2.1 + libpng)
+scripts/setup-linux.sh               the same for Linux (also builds zlib)
 scripts/get-pokefirered.sh           pinned upstream checkout + patch
 scripts/save-patch.sh                pokefirered/ changes → patches/
 scripts/build-rom.sh                 make modern → web/game/dailyred.gba.gz
@@ -385,5 +415,5 @@ tests/                               headless browser tests and the teams tool
 
 Inside `pokefirered/`, the Daily Red code is `include/dailyred.h`,
 `include/constants/dailyred.h`, `src/dailyred.c` (game flow and seed),
-`src/dailyred_team.c` (team generator), `src/dailyred_boss.c` (RED's team), and
+`src/dailyred_team.c` (team generator), `src/dailyred_boss.c` (the bosses' teams), and
 `data/maps/DailyRed_Summit/` plus `data/layouts/DailyRed_Summit/` (the map).

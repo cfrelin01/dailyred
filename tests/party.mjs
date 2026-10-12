@@ -252,3 +252,12 @@ export function validateTeam({ count, party }) {
   }
   return problems;
 }
+
+// --- The bosses' teams, parsed from src/dailyred_boss.c ----------------------------
+// Species names (e.g. 'PIKACHU') in party order for a boss id ('red', 'blue', ...).
+export function bossSpecies(id) {
+  const source = readFileSync(join(GAME_DIR, 'src/dailyred_boss.c'), 'utf8');
+  const block = source.match(new RegExp(`gDailyRedBossParty_${id}\\[[^\\]]*\\]\\s*=\\s*\\{([\\s\\S]*?)\\n\\};`, 'i'));
+  if (!block) throw new Error(`no boss party for "${id}" in dailyred_boss.c`);
+  return [...block[1].matchAll(/MON\(SPECIES_(\w+),/g)].map((m) => m[1]);
+}

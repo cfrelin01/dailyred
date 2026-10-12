@@ -9,9 +9,11 @@ import { join } from 'node:path';
 import {
   GAME_DIR, startServer, launchBrowser, bootGame, sleep, press, screenshot,
   getStatus, waitFor, walkTo, face, patchMemory, readVar, symbol, u16,
-  startRedBattle, forceWin, readGameStatus,
+  startRedBattle, forceWin, readGameStatus, webModule,
 } from './lib.mjs';
-import { readParty, formatMon, validateTeam } from './party.mjs';
+import { readParty, formatMon, validateTeam, bossSpecies } from './party.mjs';
+
+const { BOSSES, bossIndexForRun } = await webModule('bosses.js');
 
 const OUT = new URL('./output/', import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
@@ -27,7 +29,6 @@ const TERRAIN_MOUNTAIN = define('include/constants/battle.h', 'BATTLE_TERRAIN_MO
 const STYLE_SET = define('include/constants/global.h', 'OPTIONS_BATTLE_STYLE_SET');
 const LOCALID_RED = define('include/constants/map_event_ids.h', 'LOCALID_DAILYRED_RED');
 const DIR_NORTH = define('include/constants/global.h', 'DIR_NORTH');
-const SPECIES_PIKACHU = define('include/constants/species.h', 'SPECIES_PIKACHU');
 const MOVE_SEISMIC_TOSS = define('include/constants/moves.h', 'MOVE_SEISMIC_TOSS');
 const START = [define('include/constants/dailyred.h', 'DAILYRED_START_X'), define('include/constants/dailyred.h', 'DAILYRED_START_Y')];
 const RED_FRONT = [9, 12]; // the tile below RED, at the top of the stairs
@@ -124,7 +125,7 @@ try {
   await bootGame(page, server.url, { seed: 424242 });
   let s = await waitFor(page, (st) => st.inOverworld, { what: 'overworld' });
   check(s.x === START[0] && s.y === START[1], `player starts at ${START} (got ${s.x},${s.y})`);
-  check(redFacing(s.mem) === DIR_NORTH, 'RED faces away from the player, out over the drop');
+  check(redFacing(s.mem) === DIR_NORTH, 'the boss faces away from the player, out over the drop');
   check(optionsBattleStyle(s.mem) === STYLE_SET, 'battle style starts as SET');
   await sleep(1500);
   await screenshot(page, `${OUT}/01-start.png`);
@@ -159,20 +160,27 @@ try {
   s = await waitFor(page, (st) => st.inOverworld, { what: 'back from the options' });
   check(optionsBattleStyle(s.mem) === STYLE_SET, "the Options menu can't switch battle style away from SET");
 
-  // 3. Climb to RED -> trainer battle on the peak. Force a win.
+  // 3. Climb to the boss -> trainer battle on the peak. Force a win. The boss
+  //    is the one the website expects for this seed.
+  const boss = BOSSES[bossIndexForRun(424242)];
+  const bossName = boss.name;
+  console.log(`      today's boss for seed 424242: ${bossName}`);
+  check(readGameStatus(s.mem)?.boss === bossIndexForRun(424242), `the ROM picks the same boss as the website (${bossName})`);
   s = await talkToRed(page);
-  check(s.inBattle, 'talking to RED starts a battle');
+  check(s.inBattle, `talking to ${bossName} starts a battle`);
   check(s.mem.read(symbol('gBattleTerrain'), 1)[0] === TERRAIN_MOUNTAIN, 'battle uses the mountain background');
   check(s.mem.read(symbol('gBattleScripting') + BATTLE_STYLE_OFFSET, 1)[0] === STYLE_SET, 'the battle runs in SET style');
-  check(s.mem.read(symbol('gTrainerBattleOpponent_A'), 2).readUInt16LE(0) === define('include/constants/opponents.h', 'TRAINER_DAILYRED_RED'), 'opponent is TRAINER_DAILYRED_RED');
+  check(s.mem.read(symbol('gTrainerBattleOpponent_A'), 2).readUInt16LE(0) === define('include/constants/opponents.h', `TRAINER_DAILYRED_${boss.id.toUpperCase()}`), `opponent is TRAINER_DAILYRED_${boss.id.toUpperCase()}`);
   const red = readParty(s.mem, 'Enemy');
   console.log(red.party.map((m) => '      ' + formatMon(m)).join('\n'));
-  check(red.party.map((m) => m?.speciesName).join(',') === 'PIKACHU,ESPEON,SNORLAX,VENUSAUR,CHARIZARD,BLASTOISE', "RED's team is Pikachu, Espeon, Snorlax, Venusaur, Charizard, Blastoise");
-  check(red.party.every((m) => m.level === 100 && m.ivs.every((iv) => iv === 31) && m.heldItem !== 0), "RED's Pokemon are level 100 with perfect IVs and held items");
-  check(red.party.every((m) => m.evs.reduce((a, b) => a + b, 0) >= 508), "RED's Pokemon have their EV spreads");
+  const bossTeam = bossSpecies(boss.id);
+  check(red.party.map((m) => m?.speciesName).join(',') === bossTeam.join(','), `${bossName}'s team is ${bossTeam.join(', ')}`);
+  check(red.party.every((m) => m.level === 100 && m.ivs.every((iv) => iv === 26) && m.heldItem !== 0), `${bossName}'s Pokemon are level 100 with IVs of 26 and held items`);
+  check(red.party.every((m) => m.evs.reduce((a, b) => a + b, 0) >= 508), `${bossName}'s Pokemon have their EV spreads`);
   await waitForActionMenu(page);
   await screenshot(page, `${OUT}/09-battle.png`);
   const enemyParty = symbol('gEnemyParty'), battleMons = symbol('gBattleMons');
+  const leadSpecies = red.party[0].species;
 
   // KO RED's lead while the rest of his team is healthy. In SHIFT style the
   // game would now ask "Will LEAF change POKeMON?" and A would open the party
@@ -189,9 +197,9 @@ try {
     await press(page, 'a'); await sleep(250);
     const st = await getStatus(page);
     if (!st.inBattle) { stayedInBattle = false; break; }
-    nextMonOut = st.mem.read(battleMons + BMON_SIZE, 2).readUInt16LE(0) !== SPECIES_PIKACHU;
+    nextMonOut = st.mem.read(battleMons + BMON_SIZE, 2).readUInt16LE(0) !== leadSpecies;
   }
-  check(nextMonOut && stayedInBattle, 'after RED\'s Pokemon faints he sends the next one with no switch prompt');
+  check(nextMonOut && stayedInBattle, 'after the boss\'s Pokemon faints he sends the next one with no switch prompt');
   await screenshot(page, `${OUT}/10-next-mon.png`);
 
   // Now finish: only RED's active Pokemon is left, at 1 HP.
@@ -206,12 +214,14 @@ try {
   const team2 = readParty(s.mem);
   checkTeam('team after a win', team2);
   check(teamKey(team2.party) !== teamKey(team1.party), 'a new team is generated after the win');
-  check(redFacing(s.mem) === DIR_NORTH, 'RED faces the drop again for the next run');
+  check(redFacing(s.mem) === DIR_NORTH, 'the boss faces the drop again for the next run');
   await screenshot(page, `${OUT}/11-after-win.png`);
 
   // 4. Battle again and force a loss.
   s = await talkToRed(page);
-  check(s.inBattle, 'RED can be battled again');
+  check(s.inBattle, 'the next boss can be battled');
+  const boss2 = BOSSES[bossIndexForRun(424242, 1)];
+  check(s.mem.read(symbol('gTrainerBattleOpponent_A'), 2).readUInt16LE(0) === define('include/constants/opponents.h', `TRAINER_DAILYRED_${boss2.id.toUpperCase()}`), `the second run's boss is ${boss2.name}, as the website's hash says`);
   await waitForActionMenu(page);
   const playerParty = symbol('gPlayerParty');
   await patchMemory(page, [

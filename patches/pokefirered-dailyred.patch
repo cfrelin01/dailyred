@@ -75,7 +75,7 @@ index 41d0eb1..00b884c 100644
  }
 diff --git a/data/maps/DailyRed_Summit/map.json b/data/maps/DailyRed_Summit/map.json
 new file mode 100644
-index 0000000..6317762
+index 0000000..723658b
 --- /dev/null
 +++ b/data/maps/DailyRed_Summit/map.json
 @@ -0,0 +1,37 @@
@@ -99,7 +99,7 @@ index 0000000..6317762
 +    {
 +      "local_id": "LOCALID_DAILYRED_RED",
 +      "type": "object",
-+      "graphics_id": "OBJ_EVENT_GFX_DAILYRED_RED",
++      "graphics_id": "OBJ_EVENT_GFX_VAR_0",
 +      "x": 9,
 +      "y": 11,
 +      "elevation": 3,
@@ -118,20 +118,25 @@ index 0000000..6317762
 +}
 diff --git a/data/maps/DailyRed_Summit/scripts.inc b/data/maps/DailyRed_Summit/scripts.inc
 new file mode 100644
-index 0000000..033ded0
+index 0000000..ea8f741
 --- /dev/null
 +++ b/data/maps/DailyRed_Summit/scripts.inc
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,83 @@
 +DailyRed_Summit_MapScripts::
 +	.byte 0
 +
-+@ Talking to RED starts the battle. TRAINER_BATTLE_EARLY_RIVAL with
++@ Talking to the boss starts the battle. The summit's object uses
++@ OBJ_EVENT_GFX_VAR_0, which DailyRed_InitNewGame / DailyRed_StartNextRun set
++@ to this run's boss. The script always names TRAINER_DAILYRED_RED; the real
++@ boss is swapped in by StartTrainerBattle (src/battle_setup.c).
++@ TRAINER_BATTLE_EARLY_RIVAL with
 +@ RIVAL_BATTLE_HEAL_AFTER lets the player lose without whiting out, and sets
 +@ VAR_RESULT to TRUE if they lost. The DailyRed_On* specials tell the website
 +@ how the battle is going (see src/dailyred.c).
 +DailyRed_Summit_EventScript_Red::
 +	lock
 +	faceplayer
++	special DailyRed_BufferBossName
 +	textcolor NPC_TEXT_COLOR_MALE
 +	msgbox DailyRed_Summit_Text_RedIntro
 +	special DailyRed_OnBattleStart
@@ -141,6 +146,7 @@ index 0000000..033ded0
 +	textcolor NPC_TEXT_COLOR_NEUTRAL
 +	goto_if_eq VAR_RESULT, TRUE, DailyRed_Summit_EventScript_PlayerLost
 +	addvar VAR_DAILYRED_WINS, 1
++	special DailyRed_BufferBossName @ the battle may have overwritten STR_VAR_3
 +	playfanfare MUS_OBTAIN_BADGE
 +	message DailyRed_Summit_Text_PlayerWon
 +	waitmessage
@@ -181,7 +187,7 @@ index 0000000..033ded0
 +	closemessage
 +	fadescreen FADE_TO_BLACK
 +	special DailyRed_OnDailyGameOver
-+	@ Keep the script running so the player can't move or talk to RED again
++	@ Keep the script running so the player can't move or talk to the boss again
 +	@ before the website closes the game.
 +DailyRed_Summit_EventScript_DailyGameOverHold::
 +	delay 60
@@ -194,14 +200,14 @@ index 0000000..033ded0
 +	closemessage
 +	fadescreen FADE_TO_BLACK
 +	special DailyRed_StartNextRun
-+	@ Re-entering the map puts the player back at the start and resets RED.
++	@ Re-entering the map puts the player back at the start and resets the boss.
 +	warpsilent MAP_DAILY_RED_SUMMIT, DAILYRED_START_X, DAILYRED_START_Y
 +	waitstate
 +	release
 +	end
 diff --git a/data/maps/DailyRed_Summit/text.inc b/data/maps/DailyRed_Summit/text.inc
 new file mode 100644
-index 0000000..1a0b48b
+index 0000000..c1e951b
 --- /dev/null
 +++ b/data/maps/DailyRed_Summit/text.inc
 @@ -0,0 +1,33 @@
@@ -209,16 +215,16 @@ index 0000000..1a0b48b
 +    .string "…\p"
 +    .string "…………$"
 +
-+@ Shown in battle when RED loses.
++@ Shown in battle when the boss loses.
 +DailyRed_Summit_Text_RedDefeat::
 +    .string "…$"
 +
-+@ Shown in battle when RED wins.
++@ Shown in battle when the boss wins.
 +DailyRed_Summit_Text_RedVictory::
 +    .string "…$"
 +
 +DailyRed_Summit_Text_PlayerWon::
-+    .string "You defeated RED!$"
++    .string "You defeated {STR_VAR_3}!$"
 +
 +DailyRed_Summit_Text_PlayerLost::
 +    .string "Your team was wiped out…$"
@@ -237,7 +243,7 @@ index 0000000..1a0b48b
 +    .string "Record: {STR_VAR_1} win(s) in\n"
 +    .string "{STR_VAR_2} battle(s).\p"
 +    .string "A new team of six is ready.\n"
-+    .string "Climb back up and face RED!$"
++    .string "Climb back up and face the next boss!$"
 diff --git a/data/maps/map_groups.json b/data/maps/map_groups.json
 index 8c382f5..cae2f25 100644
 --- a/data/maps/map_groups.json
@@ -253,10 +259,10 @@ index 8c382f5..cae2f25 100644
    "gMapGroup_SpecialArea": [
      "NavelRock_Exterior",
 diff --git a/data/specials.inc b/data/specials.inc
-index d880bf6..485a37e 100644
+index d880bf6..ef048ab 100644
 --- a/data/specials.inc
 +++ b/data/specials.inc
-@@ -452,4 +452,9 @@ gSpecials::
+@@ -452,4 +452,10 @@ gSpecials::
  	def_special UpdateLoreleiDollCollection
  	def_special LoopWingFlapSound
  	def_special CreateEnemyEventMon
@@ -265,6 +271,7 @@ index d880bf6..485a37e 100644
 +	def_special DailyRed_OnBattleEnd
 +	def_special DailyRed_OnDailyGameOver
 +	def_special DailyRed_IsDailyGame
++	def_special DailyRed_BufferBossName
  gSpecialsEnd::
 diff --git a/include/constants/dailyred.h b/include/constants/dailyred.h
 new file mode 100644
@@ -302,22 +309,29 @@ index 9d8c514..2bddf55 100644
  // These are dynamic object gfx ids.
  // They correspond with the values of the VAR_OBJ_GFX_ID_X vars.
 diff --git a/include/constants/opponents.h b/include/constants/opponents.h
-index 3b893f2..22aae86 100644
+index 3b893f2..d425f58 100644
 --- a/include/constants/opponents.h
 +++ b/include/constants/opponents.h
-@@ -746,12 +746,14 @@
+@@ -746,12 +746,21 @@
  #define TRAINER_CHAMPION_REMATCH_BULBASAUR       740
  #define TRAINER_CHAMPION_REMATCH_CHARMANDER      741
  #define TRAINER_CUE_BALL_PAXTON                  742
-+// Daily Red: the boss (see src/dailyred_boss.c).
++// Daily Red: the bosses (see src/dailyred_boss.c).
 +#define TRAINER_DAILYRED_RED                     743
++#define TRAINER_DAILYRED_BLUE                    744
++#define TRAINER_DAILYRED_LANCE                   745
++#define TRAINER_DAILYRED_STEVEN                  746
++#define TRAINER_DAILYRED_WALLACE                 747
++#define TRAINER_DAILYRED_LORELEI                 748
++#define TRAINER_DAILYRED_BRUNO                   749
++#define TRAINER_DAILYRED_AGATHA                  750
  
  // NOTE: Because each Trainer uses a flag to determine when they are defeated, there is 
  //       only space for 25 additional trainers before trainer flag space overflows.
  //       MAX_TRAINERS_COUNT can be increased but will take up additional saveblock space
  
 -#define NUM_TRAINERS                             743
-+#define NUM_TRAINERS                             744
++#define NUM_TRAINERS                             751
  #define MAX_TRAINERS_COUNT                       768
  
  #endif  // GUARD_CONSTANTS_OPPONENTS_H
@@ -338,10 +352,10 @@ index 5c7bbf8..e477fa9 100644
  #define VAR_0x402D                         0x402D
 diff --git a/include/dailyred.h b/include/dailyred.h
 new file mode 100644
-index 0000000..47b058b
+index 0000000..8ba1064
 --- /dev/null
 +++ b/include/dailyred.h
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,63 @@
 +#ifndef GUARD_DAILYRED_H
 +#define GUARD_DAILYRED_H
 +
@@ -350,7 +364,7 @@ index 0000000..47b058b
 +// The player boots straight onto a snowy mountain peak (MAP_DAILY_RED_SUMMIT)
 +// as LEAF with six random level 100 Pokemon, climbs to RED and talks to him
 +// to start a normal
-+// FireRed trainer battle. Win or lose, a new team is generated and the next
++// FireRed trainer battle against that day's boss (RED, BLUE, LANCE...). Win or lose, a new team is generated and the next
 +// run starts in the same room.
 +//
 +// Every vanilla file touched for this mode has a "Daily Red:" comment at the
@@ -363,10 +377,29 @@ index 0000000..47b058b
 +
 +#define DAILYRED_BOSS_PARTY_SIZE 6
 +
-+// The boss team (species, IVs, items, moves) and its EV spreads.
-+// Edit src/dailyred_boss.c to change it.
-+extern const struct TrainerMonItemCustomMoves gDailyRedBossParty[DAILYRED_BOSS_PARTY_SIZE];
-+extern const u8 gDailyRedBossEVs[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS];
++// The bosses (src/dailyred_boss.c). Each run's boss is picked from the seed;
++// every boss has its own trainer entry in src/data/trainers.h and a team below.
++// Edit src/dailyred_boss.c to change teams or add bosses.
++#define DAILYRED_NUM_BOSSES 8
++
++struct DailyRedBoss
++{
++    u16 trainerId;                           // TRAINER_DAILYRED_*
++    u8 objectGfx;                            // OBJ_EVENT_GFX_*: the boss's sprite on the summit
++    const u8 (*evs)[NUM_STATS];              // one spread per party member
++};
++
++extern const struct TrainerMonItemCustomMoves gDailyRedBossParty_Red[DAILYRED_BOSS_PARTY_SIZE];
++extern const struct TrainerMonItemCustomMoves gDailyRedBossParty_Blue[DAILYRED_BOSS_PARTY_SIZE];
++extern const struct TrainerMonItemCustomMoves gDailyRedBossParty_Lance[DAILYRED_BOSS_PARTY_SIZE];
++extern const struct TrainerMonItemCustomMoves gDailyRedBossParty_Steven[DAILYRED_BOSS_PARTY_SIZE];
++extern const struct TrainerMonItemCustomMoves gDailyRedBossParty_Wallace[DAILYRED_BOSS_PARTY_SIZE];
++extern const struct TrainerMonItemCustomMoves gDailyRedBossParty_Lorelei[DAILYRED_BOSS_PARTY_SIZE];
++extern const struct TrainerMonItemCustomMoves gDailyRedBossParty_Bruno[DAILYRED_BOSS_PARTY_SIZE];
++extern const struct TrainerMonItemCustomMoves gDailyRedBossParty_Agatha[DAILYRED_BOSS_PARTY_SIZE];
++
++const struct DailyRedBoss *DailyRed_GetBoss(u8 index);
++const struct DailyRedBoss *DailyRed_GetBossByTrainerId(u16 trainerId);
 +
 +// src/dailyred.c
 +bool8 DailyRed_HasInjectedSeed(void);
@@ -378,14 +411,16 @@ index 0000000..47b058b
 +void DailyRed_OnBattleEnd(void);
 +void DailyRed_OnDailyGameOver(void);
 +u16 DailyRed_IsDailyGame(void);
-+void DailyRed_ApplyBossEVs(struct Pokemon *party, u8 partySize);
++void DailyRed_ApplyBossEVs(u16 trainerId, struct Pokemon *party, u8 partySize);
++u16 DailyRed_GetBossTrainerId(void);
++void DailyRed_BufferBossName(void);
 +
 +// src/dailyred_team.c
 +void DailyRed_GenerateTeam(struct Pokemon *party, u32 *rngState);
 +
 +#endif // GUARD_DAILYRED_H
 diff --git a/src/battle_main.c b/src/battle_main.c
-index 64c9e59..9ade275 100644
+index 64c9e59..44a3a46 100644
 --- a/src/battle_main.c
 +++ b/src/battle_main.c
 @@ -42,6 +42,7 @@
@@ -396,22 +431,29 @@ index 64c9e59..9ade275 100644
  
  static void SpriteCB_UnusedDebugSprite(struct Sprite *sprite);
  static void HandleAction_UseMove(void);
-@@ -1632,6 +1633,10 @@ static u8 CreateNPCTrainerParty(struct Pokemon *party, u16 trainerNum)
+@@ -1632,6 +1633,9 @@ static u8 CreateNPCTrainerParty(struct Pokemon *party, u16 trainerNum)
          }
  
          gBattleTypeFlags |= gTrainers[trainerNum].doubleBattle;
 +
-+        // Daily Red: vanilla trainer parties have no EVs, but RED gets his.
-+        if (trainerNum == TRAINER_DAILYRED_RED)
-+            DailyRed_ApplyBossEVs(party, gTrainers[trainerNum].partySize);
++        // Daily Red: vanilla trainer parties have no EVs, but the bosses get theirs.
++        DailyRed_ApplyBossEVs(trainerNum, party, gTrainers[trainerNum].partySize);
      }
  
      return gTrainers[trainerNum].partySize;
 diff --git a/src/battle_setup.c b/src/battle_setup.c
-index 6d62084..44f97e4 100644
+index 6d62084..745b594 100644
 --- a/src/battle_setup.c
 +++ b/src/battle_setup.c
-@@ -468,6 +468,11 @@ u8 BattleSetup_GetTerrainId(void)
+@@ -33,6 +33,7 @@
+ #include "constants/songs.h"
+ #include "constants/pokemon.h"
+ #include "constants/trainers.h"
++#include "dailyred.h"
+ 
+ enum {
+     TRANSITION_TYPE_NORMAL,
+@@ -468,6 +469,11 @@ u8 BattleSetup_GetTerrainId(void)
      u16 tileBehavior;
      s16 x, y;
  
@@ -423,11 +465,15 @@ index 6d62084..44f97e4 100644
      PlayerGetDestCoords(&x, &y);
      tileBehavior = MapGridGetMetatileBehaviorAt(x, y);
      if (MetatileBehavior_IsTallGrass(tileBehavior))
-@@ -896,7 +901,9 @@ void ClearTrainerFlag(u16 trainerId)
+@@ -896,7 +902,13 @@ void ClearTrainerFlag(u16 trainerId)
  void StartTrainerBattle(void)
  {
      gBattleTypeFlags = BATTLE_TYPE_TRAINER;
 -    if (GetTrainerBattleMode() == TRAINER_BATTLE_EARLY_RIVAL && GetRivalBattleFlags() & RIVAL_BATTLE_TUTORIAL)
++    // Daily Red: the summit script always names RED; swap in this run's boss.
++    // Reloaded from the script on every battle, so nothing carries over.
++    if (gTrainerBattleOpponent_A == TRAINER_DAILYRED_RED)
++        gTrainerBattleOpponent_A = DailyRed_GetBossTrainerId();
 +    // Daily Red: RIVAL_BATTLE_TUTORIAL (3) includes the RIVAL_BATTLE_HEAL_AFTER bit (1),
 +    // so test for all of its bits. Vanilla only ever passes 0 or 3, which behave as before.
 +    if (GetTrainerBattleMode() == TRAINER_BATTLE_EARLY_RIVAL && (GetRivalBattleFlags() & RIVAL_BATTLE_TUTORIAL) == RIVAL_BATTLE_TUTORIAL)
@@ -436,13 +482,14 @@ index 6d62084..44f97e4 100644
      DoTrainerBattle();
 diff --git a/src/dailyred.c b/src/dailyred.c
 new file mode 100644
-index 0000000..1ec6e68
+index 0000000..b5b4f25
 --- /dev/null
 +++ b/src/dailyred.c
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,278 @@
 +#include "global.h"
 +#include "gflib.h"
 +#include "dailyred.h"
++#include "data.h"
 +#include "event_data.h"
 +#include "load_save.h"
 +#include "m4a.h"
@@ -452,11 +499,13 @@ index 0000000..1ec6e68
 +#include "pokemon.h"
 +#include "random.h"
 +#include "save.h"
++#include "string_util.h"
 +#include "constants/flags.h"
 +#include "constants/maps.h"
++#include "constants/vars.h"
 +
 +// Game flow for Daily Red: boot, starting a run and how a run ends.
-+// The team rules live in dailyred_team.c and RED's team in dailyred_boss.c.
++// The team rules live in dailyred_team.c and the bosses' teams in dailyred_boss.c.
 +
 +// The website fills in this struct in the ROM image before booting it,
 +// finding it by its magic bytes (web/rom-config.js), so no emulator API is
@@ -490,7 +539,8 @@ index 0000000..1ec6e68
 +    u32 seed;
 +    u8 phase;  // DAILYRED_PHASE_*
 +    u8 result; // DAILYRED_RESULT_*
-+    u8 padding[2];
++    u8 boss;   // index of the boss this run (see dailyred_boss.c)
++    u8 padding;
 +};
 +
 +enum
@@ -515,10 +565,17 @@ index 0000000..1ec6e68
 +// the previous one stopped, so a seed fixes the whole sequence of teams.
 +static EWRAM_DATA u32 sTeamRngState = 0;
 +
++// Boss picker. The boss of run `sBossRun` is a pure function of the boot seed
++// (BossIndexForRun), so the website can compute today's boss without the ROM:
++// keep it in sync with bossIndexForRun in web/bosses.js.
++static EWRAM_DATA u32 sBossSeed = 0;
++static EWRAM_DATA u32 sBossRun = 0;
++static EWRAM_DATA u8 sBossIndex = 0;
++
 +extern u16 gTrainerId; // main.c: low half of the player's trainer ID
 +
 +static const u8 sText_PlayerName[] = _("LEAF");
-+static const u8 sText_RivalName[] = _("RED");
++static const u8 sText_RivalName[] = _("RED"); // overridden per run: see DailyRed_BufferBossName
 +
 +// The config is read through volatile pointers: the compiler would otherwise
 +// assume the values are still the zeros the ROM was built with.
@@ -530,6 +587,28 @@ index 0000000..1ec6e68
 +static bool8 IsDailyGame(void)
 +{
 +    return *(const vu8 *)&gDailyRedRomConfig.daily;
++}
++
++// murmur3's 32-bit finalizer: the same few lines exist in web/bosses.js.
++static u32 BossIndexForRun(u32 seed, u32 run)
++{
++    u32 h = seed ^ (run * 0x9E3779B9u);
++
++    h ^= h >> 16;
++    h *= 0x85EBCA6Bu;
++    h ^= h >> 13;
++    h *= 0xC2B2AE35u;
++    h ^= h >> 16;
++    return h % DAILYRED_NUM_BOSSES;
++}
++
++// Picks this run's boss and puts his sprite on the summit (the map's object
++// uses OBJ_EVENT_GFX_VAR_0, which is VAR_OBJ_GFX_ID_0's value).
++static void PickBoss(void)
++{
++    sBossIndex = BossIndexForRun(sBossSeed, sBossRun++);
++    sStatus.boss = sBossIndex;
++    VarSet(VAR_OBJ_GFX_ID_0, DailyRed_GetBoss(sBossIndex)->objectGfx);
 +}
 +
 +static void InitStatus(u32 seed)
@@ -573,6 +652,8 @@ index 0000000..1ec6e68
 +    gRngValue = seed;
 +    gTrainerId = Random();
 +    sTeamRngState = seed;
++    sBossSeed = seed;
++    sBossRun = 0;
 +    InitStatus(seed);
 +    // No resetting out of a losing battle in the daily game. Only saving,
 +    // link play and trading turn it back on, and none of those exist here.
@@ -591,6 +672,8 @@ index 0000000..1ec6e68
 +void CB2_DailyRed_StartFromTitle(void)
 +{
 +    sTeamRngState = Random32();
++    sBossSeed = Random32();
++    sBossRun = 0;
 +    InitStatus(0);
 +    StartNewGame();
 +}
@@ -602,6 +685,8 @@ index 0000000..1ec6e68
 +}
 +
 +// Called from NewGameInitData in place of warping to the player's bedroom.
++// Run order matters: the boss is picked before the warp so the summit loads
++// with his sprite.
 +void DailyRed_InitNewGame(void)
 +{
 +    FlagSet(FLAG_SYS_POKEMON_GET); // shows POKeMON in the start menu
@@ -610,16 +695,18 @@ index 0000000..1ec6e68
 +    VarSet(VAR_DAILYRED_WINS, *(const vu16 *)&gDailyRedRomConfig.wins);
 +    VarSet(VAR_DAILYRED_BATTLES, *(const vu16 *)&gDailyRedRomConfig.battles);
 +    GenerateTeam();
++    PickBoss();
 +    SetWarpDestination(MAP_GROUP(MAP_DAILY_RED_SUMMIT), MAP_NUM(MAP_DAILY_RED_SUMMIT), WARP_ID_NONE, DAILYRED_START_X, DAILYRED_START_Y);
 +    WarpIntoMap();
 +}
 +
-+// Special: replaces the player's team after a battle (when not playing the
-+// daily game). The map script then warps back to the start position, which
-+// also resets RED.
++// Special: replaces the player's team and picks a new boss after a battle
++// (when not playing the daily game). The map script then warps back to the
++// start position, which also resets the boss on the summit.
 +void DailyRed_StartNextRun(void)
 +{
 +    GenerateTeam();
++    PickBoss();
 +    sStatus.phase = DAILYRED_PHASE_EXPLORING;
 +    sStatus.result = DAILYRED_RESULT_NONE;
 +}
@@ -648,94 +735,91 @@ index 0000000..1ec6e68
 +    return IsDailyGame();
 +}
 +
-+// Vanilla trainer parties have no EVs; give RED his spreads from
-+// gDailyRedBossEVs. Called from CreateNPCTrainerParty.
-+void DailyRed_ApplyBossEVs(struct Pokemon *party, u8 partySize)
++// The trainer entry of this run's boss. The map script always asks for
++// TRAINER_DAILYRED_RED; StartTrainerBattle swaps in the real boss with this.
++u16 DailyRed_GetBossTrainerId(void)
 +{
++    return DailyRed_GetBoss(sBossIndex)->trainerId;
++}
++
++// Special: puts the boss's name in STR_VAR_3 for the map script's messages.
++void DailyRed_BufferBossName(void)
++{
++    StringCopy(gStringVar3, gTrainers[DailyRed_GetBossTrainerId()].trainerName);
++}
++
++// Vanilla trainer parties have no EVs; give the boss his spreads from
++// DailyRedBoss.evs. Called from CreateNPCTrainerParty.
++void DailyRed_ApplyBossEVs(u16 trainerId, struct Pokemon *party, u8 partySize)
++{
++    const struct DailyRedBoss *boss = DailyRed_GetBossByTrainerId(trainerId);
 +    u8 i, stat;
 +
++    if (boss == NULL)
++        return;
 +    for (i = 0; i < partySize && i < DAILYRED_BOSS_PARTY_SIZE; i++)
 +    {
 +        for (stat = 0; stat < NUM_STATS; stat++)
-+            SetMonData(&party[i], MON_DATA_HP_EV + stat, &gDailyRedBossEVs[i][stat]);
++            SetMonData(&party[i], MON_DATA_HP_EV + stat, &boss->evs[i][stat]);
 +        CalculateMonStats(&party[i]);
 +    }
 +}
 diff --git a/src/dailyred_boss.c b/src/dailyred_boss.c
 new file mode 100644
-index 0000000..37ee62e
+index 0000000..7a811e7
 --- /dev/null
 +++ b/src/dailyred_boss.c
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,247 @@
 +#include "global.h"
 +#include "dailyred.h"
 +#include "constants/items.h"
 +#include "constants/moves.h"
++#include "constants/opponents.h"
 +#include "constants/species.h"
++#include "constants/event_objects.h"
 +
-+// RED's team for Daily Red. This file is the one place to edit it.
++// The bosses of Daily Red. This file is the one place to edit their teams and
++// to add or remove bosses.
 +//
-+// Species and order follow Red's Mt. Silver team from HeartGold/SoulSilver.
-+// Movesets are adapted to moves that exist in Gen 3 (HGSS used several Gen 4
-+// moves), and every Pokemon is level 100 with perfect IVs and a full EV
-+// spread.
++// Each run's boss is picked from the seed (see DailyRed_PickBoss in
++// dailyred.c), so everyone gets the same boss on the same day. Boss number
++// `i` here must match entry `i` of BOSSES in web/bosses.js: the website uses
++// that list to show who you'll be facing.
 +//
-+// The battle itself is a normal FireRed trainer battle: the trainer entry
-+// (name, class, sprite, AI flags) is TRAINER_DAILYRED_RED in
-+// src/data/trainers.h.
++// RED's team follows his Mt. Silver team from HeartGold/SoulSilver; the others
++// are inspired by the same champions and Elite Four from the Kanto and Hoenn
++// games. Movesets are adapted to moves that exist in Gen 3, and every Pokemon
++// is level 100 with IVs of 26 and a full EV spread (a bit below perfect, and
++// below the average of the player's 25-31, to keep the bosses beatable). Team strength is kept
++// close to RED's (sum of base stats ~2900-3150); tests/bosses.mjs checks it.
++//
++// The battle itself is a normal FireRed trainer battle: each boss's trainer
++// entry (name, class, sprite, AI flags) is in src/data/trainers.h.
 +//
 +// iv: 0-255, scaled to 0-31 by the game (255 = 31 in every stat).
++// EV order: HP, Attack, Defense, Speed, Sp. Atk, Sp. Def (max 255 each, 510 total).
++// Vanilla FireRed trainers have no EVs; DailyRed_ApplyBossEVs adds these.
 +
-+const struct TrainerMonItemCustomMoves gDailyRedBossParty[DAILYRED_BOSS_PARTY_SIZE] =
++// 220 * 31 / 255 = 26 in every stat: a bit under perfect, to keep the bosses
++// beatable (the player's IVs are 25-31).
++#define BOSS_IV 220
++
++#define MON(species_, item_, m1, m2, m3, m4) \
++    { .iv = BOSS_IV, .lvl = 100, .species = species_, .heldItem = item_, .moves = {m1, m2, m3, m4} }
++
++// --- RED -----------------------------------------------------------------
++
++const struct TrainerMonItemCustomMoves gDailyRedBossParty_Red[DAILYRED_BOSS_PARTY_SIZE] =
 +{
-+    {
-+        .iv = 255,
-+        .lvl = 100,
-+        .species = SPECIES_PIKACHU,
-+        .heldItem = ITEM_LIGHT_BALL,
-+        .moves = {MOVE_VOLT_TACKLE, MOVE_THUNDERBOLT, MOVE_IRON_TAIL, MOVE_QUICK_ATTACK},
-+    },
-+    {
-+        .iv = 255,
-+        .lvl = 100,
-+        .species = SPECIES_ESPEON,
-+        .heldItem = ITEM_TWISTED_SPOON,
-+        .moves = {MOVE_PSYCHIC, MOVE_SHADOW_BALL, MOVE_CALM_MIND, MOVE_MORNING_SUN},
-+    },
-+    {
-+        .iv = 255,
-+        .lvl = 100,
-+        .species = SPECIES_SNORLAX,
-+        .heldItem = ITEM_LEFTOVERS,
-+        .moves = {MOVE_BODY_SLAM, MOVE_EARTHQUAKE, MOVE_SHADOW_BALL, MOVE_REST},
-+    },
-+    {
-+        .iv = 255,
-+        .lvl = 100,
-+        .species = SPECIES_VENUSAUR,
-+        .heldItem = ITEM_MIRACLE_SEED,
-+        .moves = {MOVE_GIGA_DRAIN, MOVE_SLUDGE_BOMB, MOVE_SLEEP_POWDER, MOVE_LEECH_SEED},
-+    },
-+    {
-+        .iv = 255,
-+        .lvl = 100,
-+        .species = SPECIES_CHARIZARD,
-+        .heldItem = ITEM_CHARCOAL,
-+        .moves = {MOVE_FLAMETHROWER, MOVE_DRAGON_CLAW, MOVE_EARTHQUAKE, MOVE_AERIAL_ACE},
-+    },
-+    {
-+        .iv = 255,
-+        .lvl = 100,
-+        .species = SPECIES_BLASTOISE,
-+        .heldItem = ITEM_MYSTIC_WATER,
-+        .moves = {MOVE_SURF, MOVE_ICE_BEAM, MOVE_EARTHQUAKE, MOVE_HYDRO_CANNON},
-+    },
++    MON(SPECIES_PIKACHU,   ITEM_LIGHT_BALL,    MOVE_VOLT_TACKLE, MOVE_THUNDERBOLT, MOVE_IRON_TAIL, MOVE_QUICK_ATTACK),
++    MON(SPECIES_ESPEON,    ITEM_TWISTED_SPOON, MOVE_PSYCHIC, MOVE_SHADOW_BALL, MOVE_CALM_MIND, MOVE_MORNING_SUN),
++    MON(SPECIES_SNORLAX,   ITEM_LEFTOVERS,     MOVE_BODY_SLAM, MOVE_EARTHQUAKE, MOVE_SHADOW_BALL, MOVE_REST),
++    MON(SPECIES_VENUSAUR,  ITEM_MIRACLE_SEED,  MOVE_GIGA_DRAIN, MOVE_SLUDGE_BOMB, MOVE_SLEEP_POWDER, MOVE_LEECH_SEED),
++    MON(SPECIES_CHARIZARD, ITEM_CHARCOAL,      MOVE_FLAMETHROWER, MOVE_DRAGON_CLAW, MOVE_EARTHQUAKE, MOVE_AERIAL_ACE),
++    MON(SPECIES_BLASTOISE, ITEM_MYSTIC_WATER,  MOVE_SURF, MOVE_ICE_BEAM, MOVE_EARTHQUAKE, MOVE_HYDRO_CANNON),
 +};
 +
-+// EVs for each Pokemon above, in the same order.
-+// Stat order: HP, Attack, Defense, Speed, Sp. Atk, Sp. Def (max 255 each, 510 total).
-+// Vanilla FireRed trainers have no EVs; DailyRed_ApplyBossEVs adds these.
-+const u8 gDailyRedBossEVs[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
++static const u8 sEVs_Red[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
 +{
 +    {  0, 124,   0, 252, 132,   0}, // Pikachu
 +    {  4,   0,   0, 252, 252,   0}, // Espeon
@@ -744,9 +828,198 @@ index 0000000..37ee62e
 +    {  0,   4,   0, 252, 252,   0}, // Charizard
 +    {252,   0,   0,   4, 252,   0}, // Blastoise
 +};
++
++// --- BLUE (champion) -----------------------------------------------------
++
++const struct TrainerMonItemCustomMoves gDailyRedBossParty_Blue[DAILYRED_BOSS_PARTY_SIZE] =
++{
++    MON(SPECIES_PIDGEOT,   ITEM_SHARP_BEAK,    MOVE_AERIAL_ACE, MOVE_DOUBLE_EDGE, MOVE_STEEL_WING, MOVE_QUICK_ATTACK),
++    MON(SPECIES_ALAKAZAM,  ITEM_TWISTED_SPOON, MOVE_PSYCHIC, MOVE_SHADOW_BALL, MOVE_FIRE_PUNCH, MOVE_RECOVER),
++    MON(SPECIES_RHYDON,    ITEM_SOFT_SAND,     MOVE_EARTHQUAKE, MOVE_ROCK_SLIDE, MOVE_MEGAHORN, MOVE_ICE_PUNCH),
++    MON(SPECIES_GYARADOS,  ITEM_MYSTIC_WATER,  MOVE_WATERFALL, MOVE_DRAGON_DANCE, MOVE_EARTHQUAKE, MOVE_ICE_BEAM),
++    MON(SPECIES_EXEGGUTOR, ITEM_MIRACLE_SEED,  MOVE_GIGA_DRAIN, MOVE_PSYCHIC, MOVE_SLEEP_POWDER, MOVE_EXPLOSION),
++    MON(SPECIES_ARCANINE,  ITEM_CHARCOAL,      MOVE_FLAMETHROWER, MOVE_EXTREME_SPEED, MOVE_CRUNCH, MOVE_IRON_TAIL),
++};
++
++static const u8 sEVs_Blue[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
++{
++    {  4, 252,   0, 252,   0,   0}, // Pidgeot
++    {  4,   0,   0, 252, 252,   0}, // Alakazam
++    {252, 252,   4,   0,   0,   0}, // Rhydon
++    {  4, 252,   0, 252,   0,   0}, // Gyarados
++    {252,   0,   0,   4, 252,   0}, // Exeggutor
++    {  4, 252,   0, 252,   0,   0}, // Arcanine
++};
++
++// --- LANCE ---------------------------------------------------------------
++
++const struct TrainerMonItemCustomMoves gDailyRedBossParty_Lance[DAILYRED_BOSS_PARTY_SIZE] =
++{
++    MON(SPECIES_GYARADOS,   ITEM_MYSTIC_WATER, MOVE_WATERFALL, MOVE_DRAGON_DANCE, MOVE_EARTHQUAKE, MOVE_ICE_BEAM),
++    MON(SPECIES_CHARIZARD,  ITEM_CHARCOAL,     MOVE_FIRE_BLAST, MOVE_DRAGON_CLAW, MOVE_EARTHQUAKE, MOVE_ROCK_SLIDE),
++    MON(SPECIES_AERODACTYL, ITEM_LUM_BERRY,    MOVE_ROCK_SLIDE, MOVE_EARTHQUAKE, MOVE_AERIAL_ACE, MOVE_HYPER_BEAM),
++    MON(SPECIES_DRAGONAIR,  ITEM_SITRUS_BERRY, MOVE_SURF, MOVE_THUNDERBOLT, MOVE_ICE_BEAM, MOVE_DRAGON_DANCE),
++    MON(SPECIES_ALTARIA,    ITEM_LEFTOVERS,    MOVE_DRAGON_DANCE, MOVE_DRAGON_CLAW, MOVE_EARTHQUAKE, MOVE_AERIAL_ACE),
++    MON(SPECIES_DRAGONITE,  ITEM_DRAGON_FANG,  MOVE_OUTRAGE, MOVE_EARTHQUAKE, MOVE_FIRE_BLAST, MOVE_THUNDERBOLT),
++};
++
++static const u8 sEVs_Lance[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
++{
++    {  4, 252,   0, 252,   0,   0}, // Gyarados
++    {  0,   4,   0, 252, 252,   0}, // Charizard
++    {  4, 252,   0, 252,   0,   0}, // Aerodactyl
++    {  4, 252,   0, 252,   0,   0}, // Dragonair
++    {252, 252,   0,   4,   0,   0}, // Altaria
++    {  4, 252,   0, 252,   0,   0}, // Dragonite
++};
++
++// --- STEVEN (Hoenn champion) --------------------------------------------
++
++const struct TrainerMonItemCustomMoves gDailyRedBossParty_Steven[DAILYRED_BOSS_PARTY_SIZE] =
++{
++    MON(SPECIES_SKARMORY,   ITEM_LEFTOVERS,   MOVE_STEEL_WING, MOVE_DRILL_PECK, MOVE_ROCK_SLIDE, MOVE_TOXIC),
++    MON(SPECIES_CLAYDOL,    ITEM_LEFTOVERS,   MOVE_EARTHQUAKE, MOVE_ICE_BEAM, MOVE_PSYCHIC, MOVE_EXPLOSION),
++    MON(SPECIES_AGGRON,     ITEM_METAL_COAT,  MOVE_IRON_TAIL, MOVE_EARTHQUAKE, MOVE_ROCK_SLIDE, MOVE_THUNDERBOLT),
++    MON(SPECIES_CRADILY,    ITEM_LEFTOVERS,   MOVE_GIGA_DRAIN, MOVE_ROCK_SLIDE, MOVE_SLUDGE_BOMB, MOVE_AMNESIA),
++    MON(SPECIES_ARMALDO,    ITEM_SILVER_POWDER, MOVE_EARTHQUAKE, MOVE_ROCK_SLIDE, MOVE_AERIAL_ACE, MOVE_SWORDS_DANCE),
++    MON(SPECIES_METAGROSS,  ITEM_LEFTOVERS,   MOVE_METEOR_MASH, MOVE_EARTHQUAKE, MOVE_PSYCHIC, MOVE_EXPLOSION),
++};
++
++static const u8 sEVs_Steven[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
++{
++    {252,   0, 252,   0,   0,   4}, // Skarmory
++    {252,   0,   0,   4, 252,   0}, // Claydol
++    {252, 252,   4,   0,   0,   0}, // Aggron
++    {252,   0,   4,   0, 252,   0}, // Cradily
++    {  4, 252,   0,   0,   0, 252}, // Armaldo
++    {  4, 252,   0, 252,   0,   0}, // Metagross
++};
++
++// --- WALLACE (Hoenn gym leader) -----------------------------------------
++
++const struct TrainerMonItemCustomMoves gDailyRedBossParty_Wallace[DAILYRED_BOSS_PARTY_SIZE] =
++{
++    MON(SPECIES_MILOTIC,   ITEM_LEFTOVERS,     MOVE_SURF, MOVE_ICE_BEAM, MOVE_RECOVER, MOVE_TOXIC),
++    MON(SPECIES_WALREIN,   ITEM_NEVER_MELT_ICE, MOVE_SURF, MOVE_ICE_BEAM, MOVE_EARTHQUAKE, MOVE_ROCK_SLIDE),
++    MON(SPECIES_LUDICOLO,  ITEM_MIRACLE_SEED,  MOVE_GIGA_DRAIN, MOVE_SURF, MOVE_ICE_BEAM, MOVE_LEECH_SEED),
++    MON(SPECIES_WHISCASH,  ITEM_LEFTOVERS,     MOVE_EARTHQUAKE, MOVE_SURF, MOVE_ICE_BEAM, MOVE_TOXIC),
++    MON(SPECIES_SEAKING,   ITEM_SEA_INCENSE,   MOVE_WATERFALL, MOVE_MEGAHORN, MOVE_ICE_BEAM, MOVE_SURF),
++    MON(SPECIES_STARMIE,   ITEM_MYSTIC_WATER,  MOVE_SURF, MOVE_ICE_BEAM, MOVE_THUNDERBOLT, MOVE_RECOVER),
++};
++
++static const u8 sEVs_Wallace[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
++{
++    {252,   0,   4,   0, 252,   0}, // Milotic
++    {252,   0,   0,   0, 252,   4}, // Walrein
++    {  4,   0,   0, 252, 252,   0}, // Ludicolo
++    {252,   0,   0,   4, 252,   0}, // Whiscash
++    {  4, 252,   0, 252,   0,   0}, // Seaking
++    {  4,   0,   0, 252, 252,   0}, // Starmie
++};
++
++// --- LORELEI ---------------------------------------------------------------
++
++const struct TrainerMonItemCustomMoves gDailyRedBossParty_Lorelei[DAILYRED_BOSS_PARTY_SIZE] =
++{
++    MON(SPECIES_DEWGONG,  ITEM_NEVER_MELT_ICE, MOVE_SURF, MOVE_ICE_BEAM, MOVE_AURORA_BEAM, MOVE_REST),
++    MON(SPECIES_CLOYSTER, ITEM_SHELL_BELL,     MOVE_SURF, MOVE_ICE_BEAM, MOVE_EXPLOSION, MOVE_TOXIC),
++    MON(SPECIES_SLOWBRO,  ITEM_LEFTOVERS,      MOVE_SURF, MOVE_PSYCHIC, MOVE_ICE_BEAM, MOVE_CALM_MIND),
++    MON(SPECIES_JYNX,     ITEM_TWISTED_SPOON,  MOVE_ICE_BEAM, MOVE_PSYCHIC, MOVE_LOVELY_KISS, MOVE_SHADOW_BALL),
++    MON(SPECIES_LAPRAS,   ITEM_LEFTOVERS,      MOVE_SURF, MOVE_ICE_BEAM, MOVE_THUNDERBOLT, MOVE_TOXIC),
++    MON(SPECIES_GLALIE,   ITEM_NEVER_MELT_ICE, MOVE_ICE_BEAM, MOVE_EARTHQUAKE, MOVE_EXPLOSION, MOVE_SHADOW_BALL),
++};
++
++static const u8 sEVs_Lorelei[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
++{
++    {252,   0,   0,   0, 252,   4}, // Dewgong
++    {  4,   0, 252,   0, 252,   0}, // Cloyster
++    {252,   0,   0,   0, 252,   4}, // Slowbro
++    {  4,   0,   0, 252, 252,   0}, // Jynx
++    {252,   0,   0,   0, 252,   4}, // Lapras
++    {  4,   0,   0, 252, 252,   0}, // Glalie
++};
++
++// --- BRUNO -----------------------------------------------------------------
++
++const struct TrainerMonItemCustomMoves gDailyRedBossParty_Bruno[DAILYRED_BOSS_PARTY_SIZE] =
++{
++    MON(SPECIES_STEELIX,    ITEM_METAL_COAT, MOVE_EARTHQUAKE, MOVE_IRON_TAIL, MOVE_ROCK_SLIDE, MOVE_EXPLOSION),
++    MON(SPECIES_HITMONLEE,  ITEM_BLACK_BELT, MOVE_HI_JUMP_KICK, MOVE_EARTHQUAKE, MOVE_ROCK_SLIDE, MOVE_BRICK_BREAK),
++    MON(SPECIES_HITMONCHAN, ITEM_BLACK_BELT, MOVE_SKY_UPPERCUT, MOVE_THUNDER_PUNCH, MOVE_FIRE_PUNCH, MOVE_ICE_PUNCH),
++    MON(SPECIES_HARIYAMA,   ITEM_LEFTOVERS,  MOVE_CROSS_CHOP, MOVE_EARTHQUAKE, MOVE_ROCK_SLIDE, MOVE_ICE_PUNCH),
++    MON(SPECIES_MACHAMP,    ITEM_BLACK_BELT, MOVE_CROSS_CHOP, MOVE_EARTHQUAKE, MOVE_ROCK_SLIDE, MOVE_FIRE_PUNCH),
++    MON(SPECIES_BLAZIKEN,   ITEM_CHARCOAL,   MOVE_BLAZE_KICK, MOVE_SKY_UPPERCUT, MOVE_ROCK_SLIDE, MOVE_SWORDS_DANCE),
++};
++
++static const u8 sEVs_Bruno[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
++{
++    {252, 252,   4,   0,   0,   0}, // Steelix
++    {  4, 252,   0, 252,   0,   0}, // Hitmonlee
++    {  4, 252,   0, 252,   0,   0}, // Hitmonchan
++    {252, 252,   4,   0,   0,   0}, // Hariyama
++    {252, 252,   4,   0,   0,   0}, // Machamp
++    {  4, 252,   0, 252,   0,   0}, // Blaziken
++};
++
++// --- AGATHA ----------------------------------------------------------------
++
++const struct TrainerMonItemCustomMoves gDailyRedBossParty_Agatha[DAILYRED_BOSS_PARTY_SIZE] =
++{
++    MON(SPECIES_GENGAR,  ITEM_SPELL_TAG,    MOVE_SHADOW_BALL, MOVE_THUNDERBOLT, MOVE_SLUDGE_BOMB, MOVE_HYPNOSIS),
++    MON(SPECIES_CROBAT,  ITEM_SHARP_BEAK,   MOVE_AERIAL_ACE, MOVE_SLUDGE_BOMB, MOVE_SHADOW_BALL, MOVE_CONFUSE_RAY),
++    MON(SPECIES_MUK,     ITEM_POISON_BARB,  MOVE_SLUDGE_BOMB, MOVE_EARTHQUAKE, MOVE_BRICK_BREAK, MOVE_EXPLOSION),
++    MON(SPECIES_BANETTE, ITEM_SPELL_TAG,    MOVE_SHADOW_BALL, MOVE_FACADE, MOVE_THUNDERBOLT, MOVE_WILL_O_WISP),
++    MON(SPECIES_ARBOK,   ITEM_LEFTOVERS,    MOVE_SLUDGE_BOMB, MOVE_EARTHQUAKE, MOVE_GLARE, MOVE_ROCK_SLIDE),
++    MON(SPECIES_GENGAR,  ITEM_LEFTOVERS,    MOVE_SHADOW_BALL, MOVE_SLUDGE_BOMB, MOVE_ICE_PUNCH, MOVE_DESTINY_BOND),
++};
++
++static const u8 sEVs_Agatha[DAILYRED_BOSS_PARTY_SIZE][NUM_STATS] =
++{
++    {  4,   0,   0, 252, 252,   0}, // Gengar
++    {  4, 252,   0, 252,   0,   0}, // Crobat
++    {252, 252,   4,   0,   0,   0}, // Muk
++    {  4, 252,   0, 252,   0,   0}, // Banette
++    {252, 252,   4,   0,   0,   0}, // Arbok
++    {252,   0,   0,   4, 252,   0}, // Gengar
++};
++
++// --- Boss table --------------------------------------------------------------
++
++// Order = boss number: keep in sync with BOSSES in web/bosses.js.
++// objectGfx is RED's or the boss's overworld sprite on the summit; the
++// Hoenn bosses have none in FireRed, so they borrow a similar-looking one.
++static const struct DailyRedBoss sBosses[DAILYRED_NUM_BOSSES] =
++{
++    { TRAINER_DAILYRED_RED,      OBJ_EVENT_GFX_DAILYRED_RED,  sEVs_Red },
++    { TRAINER_DAILYRED_BLUE,     OBJ_EVENT_GFX_BLUE,          sEVs_Blue },
++    { TRAINER_DAILYRED_LANCE,    OBJ_EVENT_GFX_LANCE,         sEVs_Lance },
++    { TRAINER_DAILYRED_STEVEN,   OBJ_EVENT_GFX_COOLTRAINER_M, sEVs_Steven },
++    { TRAINER_DAILYRED_WALLACE,  OBJ_EVENT_GFX_GENTLEMAN,     sEVs_Wallace },
++    { TRAINER_DAILYRED_LORELEI,  OBJ_EVENT_GFX_LORELEI,       sEVs_Lorelei },
++    { TRAINER_DAILYRED_BRUNO,    OBJ_EVENT_GFX_BRUNO,         sEVs_Bruno },
++    { TRAINER_DAILYRED_AGATHA,   OBJ_EVENT_GFX_AGATHA,        sEVs_Agatha },
++};
++
++const struct DailyRedBoss *DailyRed_GetBoss(u8 index)
++{
++    return &sBosses[index % DAILYRED_NUM_BOSSES];
++}
++
++// The boss whose trainer entry is `trainerId`, or NULL if it isn't one.
++const struct DailyRedBoss *DailyRed_GetBossByTrainerId(u16 trainerId)
++{
++    u8 i;
++
++    for (i = 0; i < DAILYRED_NUM_BOSSES; i++)
++    {
++        if (sBosses[i].trainerId == trainerId)
++            return &sBosses[i];
++    }
++    return NULL;
++}
 diff --git a/src/dailyred_team.c b/src/dailyred_team.c
 new file mode 100644
-index 0000000..4b9a87f
+index 0000000..8578f00
 --- /dev/null
 +++ b/src/dailyred_team.c
 @@ -0,0 +1,493 @@
@@ -784,7 +1057,7 @@ index 0000000..4b9a87f
 +#define MAX_CANDIDATE_MOVES  128 // Mew, the largest pool, has under 100
 +#define MAX_TOTAL_EVS        510
 +#define MAX_STAT_EVS         252
-+#define MIN_TEAM_IV          25  // IVs are random from this to 31 (RED's are all 31)
++#define MIN_TEAM_IV          25  // IVs are random from this to 31 (the bosses' are 26)
 +#define MAX_SPECIES_ATTEMPTS 1000
 +#define MAX_MON_ATTEMPTS     10
 +#define MAX_TEAM_ATTEMPTS    1000
@@ -796,7 +1069,7 @@ index 0000000..4b9a87f
 +// in-battle stats come to about 96% of RED's and roughly 1 team in 25 is
 +// stronger than his. Raise it to make the game easier, lower it for harder.
 +// Set to 0 to turn the rule off.
-+#define MIN_TEAM_BASE_STAT_TOTAL 2700
++#define MIN_TEAM_BASE_STAT_TOTAL 2750
 +
 +// Legendary and mythical Pokemon average a base stat total of 613, against
 +// 393 for everything else, so the minimum above would put one in most teams
@@ -1304,14 +1577,15 @@ index af2f8af..888c366 100644
 +    [OBJ_EVENT_GFX_DAILYRED_RED]             = &gObjectEventGraphicsInfo_DailyRedRed, // Daily Red
  };
 diff --git a/src/data/trainers.h b/src/data/trainers.h
-index 02afbfd..58db371 100644
+index 02afbfd..1ada983 100644
 --- a/src/data/trainers.h
 +++ b/src/data/trainers.h
-@@ -7422,4 +7422,15 @@ const struct Trainer gTrainers[] = {
+@@ -7422,4 +7422,86 @@ const struct Trainer gTrainers[] = {
          .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
          .party = NO_ITEM_DEFAULT_MOVES(sParty_CueBallPaxton),
      },
-+    // Daily Red: the boss. His team and EVs are in src/dailyred_boss.c.
++    // Daily Red: the bosses, one entry each (picked per run by the seed). Their teams
++    // and EVs are in src/dailyred_boss.c.
 +    [TRAINER_DAILYRED_RED] = {
 +        .trainerClass = TRAINER_CLASS_PKMN_TRAINER,
 +        .encounterMusic_gender = TRAINER_ENCOUNTER_MUSIC_MALE,
@@ -1319,8 +1593,78 @@ index 02afbfd..58db371 100644
 +        .trainerName = _("RED"),
 +        .items = {},
 +        .doubleBattle = FALSE,
-+        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_TRY_TO_FAINT | AI_SCRIPT_CHECK_VIABILITY,
-+        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty),
++        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_VIABILITY,
++        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty_Red),
++    },
++    [TRAINER_DAILYRED_BLUE] = {
++        .trainerClass = TRAINER_CLASS_CHAMPION,
++        .encounterMusic_gender = TRAINER_ENCOUNTER_MUSIC_MALE,
++        .trainerPic = TRAINER_PIC_CHAMPION_RIVAL,
++        .trainerName = _("BLUE"),
++        .items = {},
++        .doubleBattle = FALSE,
++        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_VIABILITY,
++        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty_Blue),
++    },
++    [TRAINER_DAILYRED_LANCE] = {
++        .trainerClass = TRAINER_CLASS_ELITE_FOUR,
++        .encounterMusic_gender = TRAINER_ENCOUNTER_MUSIC_ELITE_FOUR,
++        .trainerPic = TRAINER_PIC_ELITE_FOUR_LANCE,
++        .trainerName = _("LANCE"),
++        .items = {},
++        .doubleBattle = FALSE,
++        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_VIABILITY,
++        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty_Lance),
++    },
++    [TRAINER_DAILYRED_STEVEN] = {
++        .trainerClass = TRAINER_CLASS_CHAMPION,
++        .encounterMusic_gender = TRAINER_ENCOUNTER_MUSIC_COOL,
++        .trainerPic = TRAINER_PIC_CHAMPION_STEVEN,
++        .trainerName = _("STEVEN"),
++        .items = {},
++        .doubleBattle = FALSE,
++        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_VIABILITY,
++        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty_Steven),
++    },
++    [TRAINER_DAILYRED_WALLACE] = {
++        .trainerClass = TRAINER_CLASS_LEADER,
++        .encounterMusic_gender = TRAINER_ENCOUNTER_MUSIC_COOL,
++        .trainerPic = TRAINER_PIC_LEADER_WALLACE,
++        .trainerName = _("WALLACE"),
++        .items = {},
++        .doubleBattle = FALSE,
++        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_VIABILITY,
++        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty_Wallace),
++    },
++    [TRAINER_DAILYRED_LORELEI] = {
++        .trainerClass = TRAINER_CLASS_ELITE_FOUR,
++        .encounterMusic_gender = TRAINER_ENCOUNTER_MUSIC_ELITE_FOUR | F_TRAINER_FEMALE,
++        .trainerPic = TRAINER_PIC_ELITE_FOUR_LORELEI,
++        .trainerName = _("LORELEI"),
++        .items = {},
++        .doubleBattle = FALSE,
++        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_VIABILITY,
++        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty_Lorelei),
++    },
++    [TRAINER_DAILYRED_BRUNO] = {
++        .trainerClass = TRAINER_CLASS_ELITE_FOUR,
++        .encounterMusic_gender = TRAINER_ENCOUNTER_MUSIC_ELITE_FOUR,
++        .trainerPic = TRAINER_PIC_ELITE_FOUR_BRUNO,
++        .trainerName = _("BRUNO"),
++        .items = {},
++        .doubleBattle = FALSE,
++        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_VIABILITY,
++        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty_Bruno),
++    },
++    [TRAINER_DAILYRED_AGATHA] = {
++        .trainerClass = TRAINER_CLASS_ELITE_FOUR,
++        .encounterMusic_gender = TRAINER_ENCOUNTER_MUSIC_ELITE_FOUR | F_TRAINER_FEMALE,
++        .trainerPic = TRAINER_PIC_ELITE_FOUR_AGATHA,
++        .trainerName = _("AGATHA"),
++        .items = {},
++        .doubleBattle = FALSE,
++        .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_VIABILITY,
++        .party = ITEM_CUSTOM_MOVES(gDailyRedBossParty_Agatha),
 +    },
  };
 diff --git a/src/field_weather_effects.c b/src/field_weather_effects.c

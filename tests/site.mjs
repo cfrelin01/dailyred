@@ -4,9 +4,14 @@
 // screen. Screenshots go to tests/output/site-*.png.
 import { mkdirSync } from 'node:fs';
 import {
-  startServer, launchBrowser, sleep, press, getStatus, waitFor, startRedBattle, forceWin, forceLoss,
+  startServer, launchBrowser, sleep, press, getStatus, waitFor, startRedBattle, forceWin, forceLoss, webModule,
 } from './lib.mjs';
 import { readParty } from './party.mjs';
+
+const { gameSeed } = await webModule('daily.js');
+const { bossForSeed } = await webModule('bosses.js');
+// Boss of game number `game` (0 = first) on `date`: the same pick as the ROM (bosses.mjs checks that).
+const bossOn = (date, game = 0) => bossForSeed(gameSeed(date, game)).name;
 
 const OUT = new URL('./output/', import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
@@ -67,7 +72,10 @@ try {
   await page.screenshot({ path: `${OUT}/site-title.png`, fullPage: true });
   let s = await shown(page);
   check(s.canPlay && s.wins === '0' && s.losses === '0' && s.winStreak === '0' && s.dayStreak === '0', `new visitor sees Play and zeroed stats (${statLine(s)})`);
-  check(await page.evaluate(() => document.querySelector('.red-sprite').naturalWidth === 64), "RED's sprite is shown on the title card");
+  check(await page.evaluate((name) => {
+    const img = document.querySelector('.boss-sprite');
+    return img.naturalWidth === 64 && img.alt === name;
+  }, bossOn(DAY1)), `${bossOn(DAY1)}'s sprite is shown on the title card`);
   const leftovers = await page.evaluate(() => ['.tagline', '.steps', '#seed', '#new-run'].filter((sel) => document.querySelector(sel)));
   check(leftovers.length === 0, `removed: tagline, how-it-works, seed, New run (${leftovers.join(', ') || 'none left'})`);
   const footer = await page.evaluate(() => document.querySelector('.footer')?.textContent || '');
@@ -92,13 +100,14 @@ try {
   check(await finishDailyGame(page, 'site-win'), 'after a win the site closes the game and returns to the title card');
   s = await shown(page);
   check(s.wins === '1' && s.losses === '0' && s.winStreak === '1' && s.dayStreak === '1', `win recorded (${statLine(s)})`);
-  check(!s.canPlay && s.played === 'You beat RED today!' && /^Next battle in \d\d:\d\d:\d\d$/.test(s.next), `no Play button; shows "${s.played}" / "${s.next}"`);
+  check(s.canPlay && s.played === `You beat ${bossOn(DAY1)}!` && s.next === `Games today: 1. Next up: ${bossOn(DAY1, 1)}`, `Play is still offered after a game; shows "${s.played}" / "${s.next}"`);
+  check(await page.evaluate(() => document.getElementById('play').textContent === 'Play again'), 'the button says "Play again"');
   await page.screenshot({ path: `${OUT}/site-played.png`, fullPage: true });
 
   await page.reload();
   await sleep(1000);
   s = await shown(page);
-  check(!s.canPlay && s.wins === '1', 'reloading the same day keeps it locked, stats saved');
+  check(s.canPlay && s.wins === '1' && s.played === `You beat ${bossOn(DAY1)}!`, 'reloading keeps the stats and the result of the last game');
 
   // Same team for everyone today: a second browser gets the same Pokemon.
   const other = await browser.newContext();
@@ -110,12 +119,24 @@ try {
   check(JSON.stringify(readParty((await getStatus(otherPage)).mem).party.map((m) => m.species)) === team1, 'everyone gets the same team on the same day');
   await other.close();
 
+  // Same day, game 2: another team and the next boss, counted in the stats.
+  await page.click('#play');
+  await attach(page);
+  const teamExtra = JSON.stringify(readParty((await getStatus(page)).mem).party.map((m) => m.species));
+  check(teamExtra !== team1, 'a second game on the same day has a different team');
+  await startRedBattle(page);
+  await forceLoss(page);
+  check(await finishDailyGame(page, 'site-game2'), 'the second game ends and returns to the title card');
+  s = await shown(page);
+  check(s.wins === '1' && s.losses === '1' && s.winStreak === '0' && s.dayStreak === '1', `the extra game counts (${statLine(s)})`);
+  check(s.played === `${bossOn(DAY1, 1)} won.` && s.next === `Games today: 2. Next up: ${bossOn(DAY1, 2)}`, `shows "${s.played}" / "${s.next}"`);
+
   // Day 2: play again, lose.
   await page.clock.setFixedTime(at(DAY2));
   await page.reload();
   await sleep(1000);
   s = await shown(page);
-  check(s.canPlay && s.winStreak === '1' && s.dayStreak === '1', `next day: Play is back, streaks kept (${statLine(s)})`);
+  check(s.canPlay && s.played === null && s.winStreak === '0' && s.dayStreak === '1', `next day: a fresh card, day streak kept (${statLine(s)})`);
   await page.click('#play');
   await attach(page);
   const team2 = JSON.stringify(readParty((await getStatus(page)).mem).party.map((m) => m.species));
@@ -124,8 +145,8 @@ try {
   await forceLoss(page);
   check(await finishDailyGame(page, 'site-loss'), 'after a loss the site closes the game and returns to the title card');
   s = await shown(page);
-  check(s.wins === '1' && s.losses === '1' && s.winStreak === '0' && s.dayStreak === '2', `loss recorded (${statLine(s)})`);
-  check(s.played === 'RED won today.', `shows "${s.played}"`);
+  check(s.wins === '1' && s.losses === '2' && s.winStreak === '0' && s.dayStreak === '2', `loss recorded (${statLine(s)})`);
+  check(s.played === `${bossOn(DAY2)} won.`, `shows "${s.played}"`);
 
   // Day 3: leave in the middle of the battle -> counts as a loss.
   await page.clock.setFixedTime(at(DAY3));
@@ -137,16 +158,16 @@ try {
   await page.reload();
   await sleep(1000);
   s = await shown(page);
-  check(s.losses === '2' && s.dayStreak === '3' && !s.canPlay && s.played === 'RED won today.', `leaving mid-battle counts as a loss (${statLine(s)})`);
+  check(s.losses === '3' && s.dayStreak === '3' && s.canPlay && s.played === `${bossOn(DAY3)} won.`, `leaving mid-battle counts as a loss (${statLine(s)})`);
 
   // Day 5: a missed day resets the streaks.
   await page.clock.setFixedTime(at(DAY5));
   await page.reload();
   await sleep(800);
   s = await shown(page);
-  check(s.canPlay && s.winStreak === '0' && s.dayStreak === '0' && s.wins === '1' && s.losses === '2', `missing a day resets the streaks (${statLine(s)})`);
+  check(s.canPlay && s.winStreak === '0' && s.dayStreak === '0' && s.wins === '1' && s.losses === '3', `missing a day resets the streaks (${statLine(s)})`);
 
-  // Practice runs (?seed=) ignore the daily limit and never touch the stats.
+  // Practice runs (?seed=) use the seed's boss and team and never touch the stats.
   await page.clock.setFixedTime(at(DAY3));
   await page.goto(`${server.url}/?seed=777`);
   await sleep(800);

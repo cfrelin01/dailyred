@@ -3,7 +3,7 @@
 // uses, pressing buttons, and reading game RAM out of a save state.
 import { chromium } from 'playwright-core';
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,6 +17,14 @@ const CHROME_PATHS = [
   '/usr/bin/google-chrome',
   '/usr/bin/chromium',
 ].filter(Boolean);
+
+// Loads a plain ES module from web/ (daily.js, bosses.js: no imports of their
+// own). web/ has no package.json, so Node would treat the files as CommonJS;
+// importing the text as a data: URL sidesteps that.
+export async function webModule(file) {
+  const text = readFileSync(join(ROOT, 'web', file));
+  return import(`data:text/javascript;base64,${text.toString('base64')}`);
+}
 
 export function findChrome() {
   const path = CHROME_PATHS.find((p) => existsSync(p));
@@ -278,9 +286,10 @@ export async function startRedBattle(page) {
 }
 
 // The game's status block for the website (sStatus in src/dailyred.c), found
-// in EWRAM by its magic bytes: { phase, result }.
+// in EWRAM by its magic bytes: { phase, result, boss } (boss = index into the
+// bosses table in src/dailyred_boss.c and web/bosses.js).
 export function readGameStatus(mem) {
   const ewram = mem.read(0x02000000, 0x40000);
   const at = ewram.indexOf('DAILYRED-STATUS1', 0, 'latin1');
-  return at < 0 ? null : { phase: ewram[at + 20], result: ewram[at + 21] };
+  return at < 0 ? null : { phase: ewram[at + 20], result: ewram[at + 21], boss: ewram[at + 22] };
 }

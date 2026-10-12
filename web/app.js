@@ -1,4 +1,4 @@
-// Website controller: the daily title card (RED, your stats, Play), the
+// Website controller: the title card (the next boss, your stats, Play), the
 // emulator, and the toolbar and touch controls. All game behaviour lives in the
 // ROM; this file starts it with the day's seed, watches for the result, and
 // keeps the stats (see daily.js).
@@ -7,15 +7,17 @@ import { loadGameFiles } from './game-files.js';
 import { injectConfig, parseSeed } from './rom-config.js';
 import { createGameLink, PHASE, RESULT } from './game-link.js';
 import {
-  today, dailySeed, msUntilTomorrow, loadStats, resultFor, currentStreaks,
+  today, gameSeed, gamesOn, loadStats, resultFor, currentStreaks,
   markBattleStarted, recordResult, settleAbandonedGame,
 } from './daily.js';
+import { bossForSeed } from './bosses.js';
 
 const $ = (id) => document.getElementById(id);
 const app = document.querySelector('.app');
 const screen = $('screen');
 const ui = {
   play: $('play'),
+  bossSprite: $('boss-sprite'),
   retry: $('retry'),
   sound: $('sound'),
   fullscreen: $('fullscreen'),
@@ -49,6 +51,7 @@ let readGame = null;
 let pollTimer = null;
 let runDate = null;
 let battleSeen = false;
+let recorded = false; // this game's result is in the stats
 let muted = session.get('dailyred-muted') === '1';
 let starting = false;
 let titleDate = null;
@@ -84,30 +87,26 @@ function renderTitle() {
   ui.winStreak.textContent = winStreak;
   ui.dayStreak.textContent = dayStreak;
 
+  // The boss of the next game (the same hash as the ROM's, see bosses.js),
+  // and a line about the game just finished if there was one today.
+  const games = gamesOn(stats, titleDate);
   const result = practiceSeed ? null : resultFor(stats, titleDate);
-  ui.play.hidden = Boolean(result);
+  const next = bossForSeed(practiceSeed ?? gameSeed(titleDate, games));
+  ui.bossSprite.src = next.pic;
+  ui.bossSprite.alt = next.name;
+  ui.play.textContent = games > 0 && !practiceSeed ? 'Play again' : 'Play';
   ui.played.hidden = !result;
   ui.practiceNote.hidden = !practiceSeed;
-  if (result) ui.playedResult.textContent = result === 'won' ? 'You beat RED today!' : 'RED won today.';
-  updateCountdown();
-}
-
-function formatTime(ms) {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(Math.floor(total / 3600))}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
-}
-
-function updateCountdown() {
-  // At midnight a new battle unlocks: redraw the card.
-  if (titleDate !== today()) {
-    renderTitle();
-    return;
+  if (result) {
+    const last = bossForSeed(gameSeed(titleDate, games - 1));
+    ui.playedResult.textContent = result === 'won' ? `You beat ${last.name}!` : `${last.name} won.`;
+    ui.playedNext.textContent = `Games today: ${games}. Next up: ${next.name}`;
   }
-  if (!ui.played.hidden) ui.playedNext.textContent = `Next battle in ${formatTime(msUntilTomorrow())}`;
 }
+
+// At midnight a new day starts (new boss and team): redraw the card.
 setInterval(() => {
-  if (app.dataset.state === 'title') updateCountdown();
+  if (app.dataset.state === 'title' && titleDate !== today()) renderTitle();
 }, 1000);
 
 // --- Running the game --------------------------------------------------------------
@@ -151,12 +150,7 @@ async function startRun() {
 
     runDate = today();
     stats = loadStats(); // another tab may have played meanwhile
-    if (!practiceSeed && resultFor(stats, runDate)) {
-      renderTitle();
-      setState('title');
-      return;
-    }
-    const seed = practiceSeed ?? dailySeed(runDate);
+    const seed = practiceSeed ?? gameSeed(runDate, gamesOn(stats, runDate));
     const rom = practiceSeed
       ? injectConfig(files.rom, { seed })
       : injectConfig(files.rom, { seed, wins: stats.wins, battles: stats.wins + stats.losses, daily: true });
@@ -186,6 +180,7 @@ async function startRun() {
 
     readGame = createGameLink(emu, seed);
     battleSeen = false;
+    recorded = false;
     pollTimer = setInterval(watchGame, 500);
     setState('playing');
   } catch (err) {
@@ -200,7 +195,7 @@ async function startRun() {
   }
 }
 
-// Follows the daily battle: once it starts the day counts as played, the
+// Follows the game's battle: once it starts the game counts as played, the
 // result goes into the stats as soon as it's known, and when the game has
 // finished its closing messages we go back to the title card.
 function watchGame() {
@@ -213,14 +208,18 @@ function watchGame() {
   if (!status || practiceSeed) return;
   if (status.phase >= PHASE.BATTLE) {
     battleSeen = true;
-    markBattleStarted(stats, runDate);
+    if (!recorded) markBattleStarted(stats, runDate);
   } else if (battleSeen && status.result === RESULT.NONE) {
     // The game restarted mid-battle: that's a loss, like leaving the page.
     recordResult(stats, runDate, false);
+    recorded = true;
     endDailyGame(0);
     return;
   }
-  if (status.result !== RESULT.NONE) recordResult(stats, runDate, status.result === RESULT.WON);
+  if (status.result !== RESULT.NONE && !recorded) {
+    recordResult(stats, runDate, status.result === RESULT.WON);
+    recorded = true;
+  }
   if (status.phase === PHASE.FINISHED) endDailyGame(1000);
 }
 

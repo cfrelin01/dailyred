@@ -1,3 +1,8 @@
 #!/bin/sh
 # Stand-in for pkg-config: libpng is found via CPATH/LIBRARY_PATH instead.
+# The static libpng needs libm on Linux (pow/floor) and static link order
+# matters, so answer --libs with the full chain; the Makefile repeats -lpng -lz.
+case "$*" in
+  *--libs*) echo "-lpng -lz -lm" ;;
+esac
 exit 0
